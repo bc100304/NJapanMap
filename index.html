@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日本 47 都道府縣制霸互動圖 (高精度地理版)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- D3.js & TopoJSON -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --c-0: #e2e8f0;
+      --c-1: #4caf50;
+      --c-2: #ffeb3b;
+      --c-3: #ff9800;
+      --c-4: #f44336;
+      --border-radius: 12px;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 20px;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 1.8rem; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+    header p { color: var(--text-muted); font-size: 0.95rem; }
+
+    /* 控制面板 */
+    .search-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 18px 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 10px 14px;
+      border: 2px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--primary); }
+
+    button.btn-search {
+      padding: 10px 20px;
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button.btn-search:hover { background-color: var(--primary-hover); }
+
+    .quick-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip-label { font-size: 0.85rem; color: var(--text-muted); }
+    .chip {
+      padding: 5px 12px;
+      background: #f1f5f9;
+      border-radius: 16px;
+      font-size: 0.85rem;
+      color: #334155;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+    .chip:hover, .chip.active {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #93c5fd;
+      font-weight: 700;
+    }
+
+    /* 主網格 */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    @media (min-width: 900px) {
+      .main-grid { grid-template-columns: 320px 1fr; }
+    }
+
+    /* 統計資訊卡片 */
+    .stats-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .stats-header {
+      font-size: 1.1rem;
+      font-weight: 700;
+      border-bottom: 2px solid #f1f5f9;
+      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .user-badge {
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+
+    .stat-box-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-box {
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid #e2e8f0;
+    }
+    .stat-value { font-size: 1.3rem; font-weight: 700; color: #0f172a; }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    .progress-bar-container {
+      background: #e2e8f0;
+      border-radius: 8px;
+      height: 8px;
+      width: 100%;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4caf50, #ff9800, #f44336);
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    /* 圖例 */
+    .legend-card {
+      background: #f8fafc;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .legend-title { font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; color: #475569; }
+    .legend-items { display: flex; flex-direction: column; gap: 4px; }
+    .legend-item { display: flex; align-items: center; font-size: 0.8rem; }
+    .legend-color { width: 14px; height: 14px; border-radius: 3px; margin-right: 8px; }
+
+    .pref-list-container { max-height: 200px; overflow-y: auto; padding-right: 4px; }
+    .pref-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pref-tag {
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #334155;
+    }
+
+    /* 地圖顯示區 */
+    .map-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 10px;
+      box-shadow: var(--shadow);
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 550px;
+    }
+
+    #map-svg {
+      width: 100%;
+      height: 100%;
+      max-height: 650px;
+    }
+
+    .pref-path {
+      stroke: #ffffff;
+      stroke-width: 0.6px;
+      cursor: pointer;
+      transition: fill 0.25s ease, stroke 0.2s, stroke-width 0.2s;
+    }
+    .pref-path:hover {
+      stroke: #0f172a;
+      stroke-width: 1.5px;
+      filter: brightness(0.92);
+    }
+
+    /* 載入中動畫 */
+    .loading-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255, 255, 255, 0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      z-index: 10;
+      border-radius: var(--border-radius);
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      padding: 6px 12px;
+      background: rgba(15, 23, 42, 0.9);
+      color: #ffffff;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 100;
+      text-align: center;
+    }
+    .tooltip strong { display: block; font-size: 0.9rem; margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>🇯🇵 日本 47 都道府縣制霸互動圖</h1>
+      <p>輸入用戶代號（C01 ~ C05）實時載入去過縣市頻次地圖</p>
+    </header>
+
+    <div class="search-card">
+      <div class="search-row">
+        <input type="text" id="userInput" placeholder="輸入用戶代號 (例如: C01)" value="C01" />
+        <button class="btn-search" id="btnSearch">查詢</button>
+      </div>
+      <div class="quick-chips">
+        <span class="chip-label">快速選擇：</span>
+        <div class="chip active" data-user="C01">C01</div>
+        <div class="chip" data-user="C02">C02</div>
+        <div class="chip" data-user="C03">C03</div>
+        <div class="chip" data-user="C04">C04</div>
+        <div class="chip" data-user="C05">C05</div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <!-- 統計面板 -->
+      <div class="stats-card">
+        <div class="stats-header">
+          <span>統計數據</span>
+          <span class="user-badge" id="currentUserBadge">用戶 C01</span>
+        </div>
+
+        <div class="stat-box-container">
+          <div class="stat-box">
+            <div class="stat-value" id="statVisited">0 / 47</div>
+            <div class="stat-label">解鎖縣市</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="statRate">0.0%</div>
+            <div class="stat-label">日本制霸率</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="statTotalVisits">0</div>
+            <div class="stat-label">總造訪次數</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="statTopPref" style="font-size: 1.05rem; line-height: 1.8;">-</div>
+            <div class="stat-label">最多造訪縣市</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="chip-label" style="margin-bottom: 4px;">制霸進度條</div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+        </div>
+
+        <div class="legend-card">
+          <div class="legend-title">造訪頻次圖例 (Legend)</div>
+          <div class="legend-items">
+            <div class="legend-item"><div class="legend-color" style="background-color: var(--c-0);"></div> 0 次 (未造訪)</div>
+            <div class="legend-item"><div class="legend-color" style="background-color: var(--c-1);"></div> 1 次</div>
+            <div class="legend-item"><div class="legend-color" style="background-color: var(--c-2);"></div> 2 次</div>
+            <div class="legend-item"><div class="legend-color" style="background-color: var(--c-3);"></div> 3 次</div>
+            <div class="legend-item"><div class="legend-color" style="background-color: var(--c-4);"></div> 4 次 (含) 以上</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="chip-label" style="margin-bottom: 6px;">已造訪縣市明細</div>
+          <div class="pref-list-container" id="prefDetailList"></div>
+        </div>
+      </div>
+
+      <!-- 地圖容器 -->
+      <div class="map-card" id="mapCard">
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="spinner"></div>
+          <div>地圖載入中...</div>
+        </div>
+        <svg id="map-svg" viewBox="0 0 800 750" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Mock Data (Excel 轉換資料)
+    const mockUserData = {
+      "C01": { "京都府": 12, "千葉県": 2, "埼玉県": 2, "宮城県": 2, "岩手県": 2, "東京都": 29, "沖縄県": 4, "神奈川県": 7, "福岡県": 5, "秋田県": 6, "長野県": 10, "高知県": 1 },
+      "C02": { "京都府": 2, "兵庫県": 1, "北海道": 4, "大阪府": 17, "宮城県": 2, "山梨県": 4, "岩手県": 2, "東京都": 20, "沖縄県": 2, "熊本県": 6, "秋田県": 6, "茨城県": 2 },
+      "C03": { "兵庫県": 16, "千葉県": 6, "山口県": 2, "山梨県": 10, "岐阜県": 1, "東京都": 8, "神奈川県": 10, "福岡県": 2, "長野県": 5, "静岡県": 10, "高知県": 2 },
+      "C04": { "京都府": 10, "兵庫県": 6, "和歌山県": 2, "大分県": 2, "大阪府": 6, "宮崎県": 4, "山梨県": 9, "岐阜県": 10, "広島県": 2, "東京都": 3, "熊本県": 2, "石川県": 3, "福岡県": 2, "長野県": 5, "青森県": 2, "高知県": 2, "鳥取県": 2 },
+      "C05": { "京都府": 13, "佐賀県": 2, "兵庫県": 2, "千葉県": 7, "埼玉県": 1, "大阪府": 10, "山梨県": 20, "岐阜県": 2, "岡山県": 2, "島根県": 10, "愛知県": 4, "東京都": 58, "沖縄県": 12, "滋賀県": 4, "熊本県": 2, "神奈川県": 16, "福岡県": 4, "長崎県": 10, "高知県": 2, "鳥取県": 1 }
+    };
+
+    const prefecturesList = [
+      "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+      "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+      "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+      "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+      "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+      "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+      "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+    ];
+
+    function getColorByCount(count) {
+      if (!count || count <= 0) return '#e2e8f0';
+      if (count === 1) return '#4caf50';
+      if (count === 2) return '#ffeb3b';
+      if (count === 3) return '#ff9800';
+      return '#f44336';
+    }
+
+    let currentUserId = "C01";
+    let geoFeatures = [];
+
+    const userInput = document.getElementById('userInput');
+    const btnSearch = document.getElementById('btnSearch');
+    const tooltip = document.getElementById('tooltip');
+    const chips = document.querySelectorAll('.chip');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    const svg = d3.select("#map-svg");
+    const width = 800;
+    const height = 750;
+
+    // 定義 Mercator 投影法（針對日本經緯度調整）
+    const projection = d3.geoMercator()
+      .center([137.5, 37.5])
+      .scale(1700)
+      .translate([width / 2, height / 2 - 20]);
+
+    const pathGenerator = d3.geoPath().projection(projection);
+
+    // 2. 多重 CDN 來源自動容錯載入 GeoJSON / TopoJSON
+    const mapSources = [
+      {
+        url: "https://code.highcharts.com/mapdata/countries/jp/jp-all.geo.json",
+        type: "geojson"
+      },
+      {
+        url: "https://cdn.jsdelivr.net/npm/japan-atlas@1/japan/japan.json",
+        type: "topojson"
+      }
+    ];
+
+    function loadMapData(index = 0) {
+      if (index >= mapSources.length) {
+        loadingOverlay.innerHTML = "<div style='color:#ef4444;'>地圖資源載入失敗，請檢查網路連線。</div>";
+        return;
+      }
+
+      const source = mapSources[index];
+      d3.json(source.url).then(data => {
+        if (source.type === "topojson") {
+          const key = Object.keys(data.objects)[0];
+          geoFeatures = topojson.feature(data, data.objects[key]).features;
+        } else {
+          geoFeatures = data.features;
+        }
+
+        loadingOverlay.style.display = "none";
+        renderMap();
+        updateUserView(currentUserId);
+      }).catch(err => {
+        console.warn(`地圖來源 ${index + 1} 載入失敗，嘗試備用來源...`, err);
+        loadMapData(index + 1);
+      });
+    }
+
+    // 3. 地名比對映射
+    function getStandardName(feature) {
+      const p = feature.properties || {};
+      const rawName = p.name || p.nam_ja || p.name_ja || p.nam || p["woe-name"] || "";
+      
+      for (let stdName of prefecturesList) {
+        const cleanStd = stdName.replace(/[都|府|県|道]/g, '');
+        if (rawName.includes(cleanStd) || stdName.includes(rawName)) {
+          return stdName;
+        }
+      }
+      return rawName;
+    }
+
+    // 4. 繪製 D3 GeoJSON 路徑
+    function renderMap() {
+      svg.selectAll("*").remove();
+
+      const g = svg.append("g");
+
+      g.selectAll("path")
+        .data(geoFeatures)
+        .enter()
+        .append("path")
+        .attr("class", "pref-path")
+        .attr("d", pathGenerator)
+        .attr("fill", "#e2e8f0")
+        .on("mouseover", function(event, d) {
+          const prefName = getStandardName(d);
+          const userData = mockUserData[currentUserId] || {};
+          const count = userData[prefName] || 0;
+
+          d3.select(this).raise();
+
+          tooltip.style.opacity = 1;
+          tooltip.innerHTML = `<strong>${prefName}</strong>造訪次數：${count} 次`;
+        })
+        .on("mousemove", function(event) {
+          const rect = document.getElementById('mapCard').getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          tooltip.style.left = (x + 12) + "px";
+          tooltip.style.top = (y - 45) + "px";
+        })
+        .on("mouseout", function() {
+          tooltip.style.opacity = 0;
+        });
+    }
+
+    // 5. 更新數據與地圖填色
+    function updateUserView(userId) {
+      currentUserId = userId.toUpperCase().trim();
+      const userData = mockUserData[currentUserId] || {};
+
+      document.getElementById('currentUserBadge').innerText = `用戶 ${currentUserId}`;
+      chips.forEach(chip => {
+        chip.classList.toggle('active', chip.getAttribute('data-user') === currentUserId);
+      });
+
+      let unlockedCount = 0;
+      let totalVisits = 0;
+      let topPref = "-";
+      let maxVisits = 0;
+
+      prefecturesList.forEach(pref => {
+        const visits = userData[pref] || 0;
+        if (visits > 0) {
+          unlockedCount++;
+          totalVisits += visits;
+          if (visits > maxVisits) {
+            maxVisits = visits;
+            topPref = `${pref} (${visits}次)`;
+          }
+        }
+      });
+
+      const conquestRate = ((unlockedCount / 47) * 100).toFixed(1);
+
+      document.getElementById('statVisited').innerText = `${unlockedCount} / 47`;
+      document.getElementById('statRate').innerText = `${conquestRate}%`;
+      document.getElementById('statTotalVisits').innerText = totalVisits;
+      document.getElementById('statTopPref').innerText = topPref;
+      document.getElementById('progressBar').style.width = `${conquestRate}%`;
+
+      // 填色轉場動畫
+      svg.selectAll(".pref-path")
+        .transition()
+        .duration(300)
+        .attr("fill", function(d) {
+          const name = getStandardName(d);
+          const count = userData[name] || 0;
+          return getColorByCount(count);
+        });
+
+      renderDetailList(userData);
+    }
+
+    function renderDetailList(userData) {
+      const listContainer = document.getElementById('prefDetailList');
+      const visitedEntries = Object.entries(userData)
+        .filter(([_, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1]);
+
+      if (visitedEntries.length === 0) {
+        listContainer.innerHTML = '<div style="color:#94a3b8; font-size:0.8rem; padding:8px 0;">尚無造訪紀錄。</div>';
+        return;
+      }
+
+      const tagsHTML = visitedEntries.map(([pref, count]) => {
+        const color = getColorByCount(count);
+        return `<span class="pref-tag" style="border-left: 3px solid ${color};">${pref} <strong>${count}次</strong></span>`;
+      }).join('');
+
+      listContainer.innerHTML = `<div class="pref-tags">${tagsHTML}</div>`;
+    }
+
+    // 事件處理
+    btnSearch.addEventListener('click', () => {
+      if (userInput.value) updateUserView(userInput.value);
+    });
+
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && userInput.value) updateUserView(userInput.value);
+    });
+
+    chips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        const u = chip.getAttribute('data-user');
+        userInput.value = u;
+        updateUserView(u);
+      });
+    });
+
+    // 啟動地圖載入
+    loadMapData(0);
+  </script>
+</body>
+</html>
